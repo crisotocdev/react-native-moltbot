@@ -8,13 +8,45 @@ export default function Login() {
     const [token, setToken] = useState("");
 
     async function onSave() {
-        if (!apiBase.trim() || !token.trim()) {
+        const base = apiBase.trim();
+        const tok = token.trim();
+
+        if (!base || !tok) {
             Alert.alert("Falta info", "API Base y Token son obligatorios.");
             return;
         }
-        await AsyncStorage.setItem("moltbot_api", apiBase.trim());
-        await AsyncStorage.setItem("moltbot_token", token.trim());
-        router.replace("/home");
+
+        try {
+            const res = await fetch(`${base}/auth/verify`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ token: tok }),
+            });
+
+            const text = await res.text();
+
+            let data: any = null;
+            try {
+                data = text ? JSON.parse(text) : null;
+            } catch {
+                data = text;
+            }
+
+            if (!res.ok) {
+                const msg =
+                    (data && typeof data === "object" && data.response) ||
+                    "Token inválido";
+                throw new Error(msg);
+            }
+
+            // ✔ Token válido → guardar
+            await AsyncStorage.setItem("moltbot_api", base);
+            await AsyncStorage.setItem("moltbot_token", tok);
+
+            router.replace("/home");
+        } catch (e: any) {
+            Alert.alert("No autorizado", e?.message ?? "Token inválido");
+        }
     }
 
     return (

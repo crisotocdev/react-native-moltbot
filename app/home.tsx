@@ -1,17 +1,47 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
-async function postText(url: string, body: any) {
+type CmdResponse = {
+    ok: boolean;
+    role: string;
+    command: string;
+    argument: string;
+    response: string;
+};
+
+function joinUrl(base: string, path: string) {
+    const b = base.endsWith("/") ? base.slice(0, -1) : base;
+    const p = path.startsWith("/") ? path : `/${path}`;
+    return `${b}${p}`;
+}
+
+async function postJson<T>(url: string, body: any): Promise<T> {
     const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
     });
+
     const text = await res.text();
-    if (!res.ok) throw new Error(`HTTP ${res.status}: ${text}`);
-    return text;
+
+    let data: any = null;
+    try {
+        data = text ? JSON.parse(text) : null;
+    } catch {
+        data = text;
+    }
+
+    if (!res.ok) {
+        const msg =
+            (data && typeof data === "object" && (data.response || data.error || data.message)) ||
+            (typeof data === "string" ? data : "") ||
+            `HTTP ${res.status}`;
+        throw new Error(msg);
+    }
+
+    return data as T;
 }
 
 export default function Home() {
@@ -19,6 +49,9 @@ export default function Home() {
     const [token, setToken] = useState("");
     const [cmd, setCmd] = useState("PING");
     const [out, setOut] = useState("");
+
+    const base = useMemo(() => apiBase.trim(), [apiBase]);
+    const tok = useMemo(() => token.trim(), [token]);
 
     useEffect(() => {
         (async () => {
@@ -30,11 +63,32 @@ export default function Home() {
         })();
     }, []);
 
+    function renderCmdResult(data: CmdResponse) {
+        // salida “humana” + JSON para debug
+        const human = `${data.ok ? "✅" : "❌"} ${data.role} | ${data.command}${data.argument ? " " + data.argument : ""
+            }\n${data.response}`;
+
+        const debug = `\n\n---\nJSON:\n${JSON.stringify(data, null, 2)}`;
+        return human + debug;
+    }
+
+    async function runCommand(message: string) {
+        if (!base || !tok) {
+            router.replace("/login");
+            return;
+        }
+
+        const url = joinUrl(base, "/cmd");
+
+        // ✅ tu backend espera { token, message }
+        const data = await postJson<CmdResponse>(url, { token: tok, message });
+
+        setOut(renderCmdResult(data));
+    }
+
     async function whoami() {
         try {
-            // ajusta si tu server usa otro endpoint:
-            const text = await postText(`${apiBase}/login`, { user: "admin", pass: token });
-            setOut(text);
+            await runCommand("WHOAMI");
         } catch (e: any) {
             Alert.alert("Error", e?.message ?? "Error");
         }
@@ -42,8 +96,12 @@ export default function Home() {
 
     async function sendCmd() {
         try {
-            const text = await postText(`${apiBase}/cmd`, { token, message: cmd });
-            setOut(text);
+            const message = cmd.trim();
+            if (!message) {
+                Alert.alert("Falta comando", "Escribe un comando (ej: PING).");
+                return;
+            }
+            await runCommand(message);
         } catch (e: any) {
             Alert.alert("Error", e?.message ?? "Error");
         }
@@ -58,7 +116,7 @@ export default function Home() {
     return (
         <View style={styles.container}>
             <Text style={styles.title}>Panel</Text>
-            <Text style={styles.small}>API: {apiBase}</Text>
+            <Text style={styles.small}>API: {base || "(no configurada)"}</Text>
 
             <View style={styles.row}>
                 <Pressable style={styles.btn} onPress={whoami}>
@@ -70,7 +128,13 @@ export default function Home() {
             </View>
 
             <Text style={styles.label}>Comando</Text>
-            <TextInput style={styles.input} value={cmd} onChangeText={setCmd} autoCapitalize="none" />
+            <TextInput
+                style={styles.input}
+                value={cmd}
+                onChangeText={setCmd}
+                autoCapitalize="none"
+                placeholder="PING, TIME, SYSINFO, PROCESOS, WHOAMI..."
+            />
 
             <Pressable style={styles.btn} onPress={sendCmd}>
                 <Text style={styles.btnText}>Enviar CMD</Text>
@@ -78,7 +142,9 @@ export default function Home() {
 
             <Text style={styles.label}>Salida</Text>
             <ScrollView style={styles.outBox}>
-                <Text selectable style={styles.outText}>{out || "(vacío)"}</Text>
+                <Text selectable style={styles.outText}>
+                    {out || "(vacío)"}
+                </Text>
             </ScrollView>
         </View>
     );

@@ -1,0 +1,179 @@
+MOLTBOT — PLAN DE CONTINUACIÓN
+Servidor Rust + App React Native
+
+ESTADO ACTUAL (COMPLETADO)
+
+Servidor Rust compila correctamente
+
+Endpoints básicos funcionando
+
+Token store operativo
+
+Repositorio servidor en GitHub
+
+App Expo creada
+
+Pantalla Login visible
+
+AsyncStorage funcionando
+
+Repositorio App en GitHub
+
+FASE 1 — CONECTAR LOGIN CON SERVIDOR (PRIORIDAD)
+
+Objetivo: La app valida token contra el servidor Rust.
+
+Crear endpoint en servidor:
+
+POST /auth/verify
+
+Body:
+{ "token": "ABC123" }
+
+Respuesta OK:
+{ "ok": true, "role": "admin" }
+
+Respuesta error:
+{ "ok": false }
+
+Probar endpoint en navegador o curl:
+
+http://127.0.0.1:8080/auth/verify
+
+Crear archivo en la app:
+
+/services/api.ts
+
+Funciones:
+
+verifyToken(token)
+
+setApiBase(url)
+
+Modificar login.tsx
+
+Al presionar Guardar:
+
+Llamar verifyToken
+
+Si ok → guardar token
+
+Si error → mostrar alerta
+
+Guardar datos con AsyncStorage:
+
+moltbot_token
+
+moltbot_api_base
+
+Redirigir a Home:
+
+router.replace("/home")
+
+FASE 2 — HOME REAL
+
+Pantalla Home debe tener:
+
+Estado servidor: Online / Offline
+
+Botón WhoAmI
+
+Botón Ejecutar comando
+
+Botón Logout
+
+FASE 3 — EJECUTAR COMANDOS
+
+Servidor:
+
+POST /cmd
+
+Body:
+{ "token": "...", "command": "PING" }
+
+Respuesta:
+{ "output": "PONG" }
+
+App:
+
+Input comando
+
+Botón Enviar
+
+Mostrar resultado
+
+FASE 4 — HISTORIAL
+
+Servidor:
+
+Guardar comandos ejecutados
+
+App:
+
+Lista historial con fecha
+
+Comando
+
+Resultado
+
+FASE 5 — SEGURIDAD BÁSICA
+
+Hash de tokens
+
+Rate limit simple
+
+Logs
+
+FASE 6 — INTEGRACIÓN IA LOCAL
+
+Servidor:
+
+POST /ai/chat
+
+Conectar a:
+
+Ollama
+
+LM Studio
+
+llama.cpp
+
+App:
+
+Chat simple
+
+FASE 7 — MODO CELULAR REAL
+
+Reemplazar 127.0.0.1 por IP local
+
+Campo editable para IP
+
+Guardar IP
+
+FASE 8 — PULIDO
+
+Loaders
+
+Manejo errores
+
+Mejor UI
+
+Tema oscuro
+
+FASE 9 — FUTURO
+
+Docker
+
+Deploy servidor
+
+Usuarios
+
+Dashboard web
+
+ORDEN SIEMPRE:
+
+FASE 1
+FASE 2
+FASE 3
+FASE 4
+FASE 6
