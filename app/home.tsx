@@ -49,6 +49,7 @@ export default function Home() {
     const [token, setToken] = useState("");
     const [cmd, setCmd] = useState("PING");
     const [out, setOut] = useState("");
+    const [loading, setLoading] = useState(true);
 
     const base = useMemo(() => apiBase.trim(), [apiBase]);
     const tok = useMemo(() => token.trim(), [token]);
@@ -57,9 +58,14 @@ export default function Home() {
         (async () => {
             const a = await AsyncStorage.getItem("moltbot_api");
             const t = await AsyncStorage.getItem("moltbot_token");
-            if (!a || !t) return router.replace("/login");
+            if (!a || !t) {
+                setLoading(false);
+                router.replace("/login");
+                return;
+            }
             setApiBase(a);
             setToken(t);
+            setLoading(false);
         })();
     }, []);
 
@@ -110,7 +116,16 @@ export default function Home() {
     async function logout() {
         await AsyncStorage.removeItem("moltbot_api");
         await AsyncStorage.removeItem("moltbot_token");
+        setOut("");
+        setCmd("PING");
         router.replace("/login");
+    }
+    if (loading) {
+        return (
+            <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+                <Text>Cargando...</Text>
+            </View>
+        );
     }
 
     return (
@@ -119,7 +134,7 @@ export default function Home() {
             <Text style={styles.small}>API: {base || "(no configurada)"}</Text>
 
             <View style={styles.row}>
-                <Pressable style={styles.btn} onPress={whoami}>
+                <Pressable style={[styles.btn, (!tok || !base) && { opacity: 0.5 }]} onPress={whoami} disabled={!tok || !base}>
                     <Text style={styles.btnText}>Whoami</Text>
                 </Pressable>
                 <Pressable style={[styles.btn, styles.red]} onPress={logout}>
@@ -133,14 +148,29 @@ export default function Home() {
                 value={cmd}
                 onChangeText={setCmd}
                 autoCapitalize="none"
-                placeholder="PING, TIME, SYSINFO, PROCESOS, WHOAMI..."
+                onSubmitEditing={sendCmd}
+                returnKeyType="send"
             />
 
-            <Pressable style={styles.btn} onPress={sendCmd}>
+            <Pressable
+                style={[styles.btn, !cmd.trim() && { opacity: 0.5 }]}
+                onPress={sendCmd}
+                disabled={!cmd.trim()}
+            >
                 <Text style={styles.btnText}>Enviar CMD</Text>
             </Pressable>
 
             <Text style={styles.label}>Salida</Text>
+            <Pressable style={styles.btn} onPress={() => {
+                try {
+                    navigator.clipboard.writeText(out);
+                    Alert.alert("Listo", "Salida copiada.");
+                } catch {
+                    Alert.alert("No disponible", "Copiar funciona solo en web por ahora.");
+                }
+            }}>
+                <Text style={styles.btnText}>Copiar salida</Text>
+            </Pressable>
             <ScrollView style={styles.outBox}>
                 <Text selectable style={styles.outText}>
                     {out || "(vacío)"}
