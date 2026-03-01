@@ -2,13 +2,16 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import React, { useState } from "react";
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { useAuth } from "../auth/AuthContext";
 
 export default function Login() {
+    const { signIn } = useAuth();
+
     const [apiBase, setApiBase] = useState("http://127.0.0.1:8080");
     const [token, setToken] = useState("");
 
     async function onSave() {
-        const base = apiBase.trim();
+        const base = apiBase.trim().replace(/\/+$/, ""); // quita slash final
         const tok = token.trim();
 
         if (!base || !tok) {
@@ -32,16 +35,24 @@ export default function Login() {
                 data = text;
             }
 
-            if (!res.ok) {
+            const isOk =
+                res.ok &&
+                data &&
+                typeof data === "object" &&
+                (data.ok === true || data.response === "TOKEN_OK");
+
+            if (!isOk) {
                 const msg =
-                    (data && typeof data === "object" && data.response) ||
-                    "Token inválido";
+                    (data && typeof data === "object" && (data.response || data.error || data.message)) ||
+                    `Token inválido (HTTP ${res.status})`;
                 throw new Error(msg);
             }
 
-            // ✔ Token válido → guardar
+            // ✅ Guardar API base en AsyncStorage (config)
             await AsyncStorage.setItem("moltbot_api", base);
-            await AsyncStorage.setItem("moltbot_token", tok);
+
+            // ✅ Guardar token en AuthContext (SecureStore) -> Home lo lee desde useAuth()
+            await signIn(tok);
 
             router.replace("/home");
         } catch (e: any) {
@@ -54,16 +65,31 @@ export default function Login() {
             <Text style={styles.title}>Moltbot</Text>
 
             <Text style={styles.label}>API Base</Text>
-            <TextInput style={styles.input} value={apiBase} onChangeText={setApiBase} autoCapitalize="none" />
+            <TextInput
+                style={styles.input}
+                value={apiBase}
+                onChangeText={setApiBase}
+                autoCapitalize="none"
+                autoCorrect={false}
+            />
 
             <Text style={styles.label}>Token</Text>
-            <TextInput style={styles.input} value={token} onChangeText={setToken} autoCapitalize="none" secureTextEntry />
+            <TextInput
+                style={styles.input}
+                value={token}
+                onChangeText={setToken}
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry
+            />
 
             <Pressable style={styles.btn} onPress={onSave}>
                 <Text style={styles.btnText}>Guardar</Text>
             </Pressable>
 
-            <Text style={styles.hint}>En Web puedes usar 127.0.0.1. En celular luego usaremos IP/Tailscale.</Text>
+            <Text style={styles.hint}>
+                En Web puedes usar 127.0.0.1. En celular luego usaremos IP/Tailscale.
+            </Text>
         </View>
     );
 }

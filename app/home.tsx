@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { useAuth } from "../auth/AuthContext";
 
 type CmdResponse = {
     ok: boolean;
@@ -45,32 +46,47 @@ async function postJson<T>(url: string, body: any): Promise<T> {
 }
 
 export default function Home() {
+    const { token, signOut, loading: authLoading } = useAuth();
+
     const [apiBase, setApiBase] = useState("");
-    const [token, setToken] = useState("");
     const [cmd, setCmd] = useState("PING");
     const [out, setOut] = useState("");
     const [loading, setLoading] = useState(true);
 
     const base = useMemo(() => apiBase.trim(), [apiBase]);
-    const tok = useMemo(() => token.trim(), [token]);
+    const tok = useMemo(() => (token ?? "").trim(), [token]);
 
     useEffect(() => {
         (async () => {
-            const a = await AsyncStorage.getItem("moltbot_api");
-            const t = await AsyncStorage.getItem("moltbot_token");
-            if (!a || !t) {
+            // Esperar a que el AuthContext cargue el token desde SecureStore
+            if (authLoading) return;
+
+            const a = (await AsyncStorage.getItem("moltbot_api"))?.trim();
+
+            // Si falta apiBase o token -> login
+            if (!a || !tok) {
                 setLoading(false);
                 router.replace("/login");
                 return;
             }
+
             setApiBase(a);
-            setToken(t);
-            setLoading(false);
+
+            // Verificar token contra backend (igual que antes, pero sin leerlo de AsyncStorage)
+            try {
+                const ok = await postJson(joinUrl(a, "/auth/verify"), { token: tok });
+                // Si tu /auth/verify devuelve JSON cualquiera en ok, basta con que no tire error.
+                void ok;
+                setLoading(false);
+            } catch (e: any) {
+                setLoading(false);
+                await signOut(); // limpia token (SecureStore)
+                router.replace("/login");
+            }
         })();
-    }, []);
+    }, [authLoading, tok]);
 
     function renderCmdResult(data: CmdResponse) {
-        // salida “humana” + JSON para debug
         const human = `${data.ok ? "✅" : "❌"} ${data.role} | ${data.command}${data.argument ? " " + data.argument : ""
             }\n${data.response}`;
 
@@ -87,9 +103,21 @@ export default function Home() {
         const url = joinUrl(base, "/cmd");
 
         // ✅ tu backend espera { token, message }
-        const data = await postJson<CmdResponse>(url, { token: tok, message });
+        try {
+            const data = await postJson<CmdResponse>(url, { token: tok, message });
+            setOut(renderCmdResult(data));
+        } catch (e: any) {
+            const msg = e?.message ?? "Error";
 
-        setOut(renderCmdResult(data));
+            // Si el backend responde algo tipo "Token inválido", forzamos logout
+            if (typeof msg === "string" && msg.toLowerCase().includes("token")) {
+                await signOut();
+                router.replace("/login");
+                return;
+            }
+
+            throw e;
+        }
     }
 
     async function whoami() {
@@ -114,13 +142,15 @@ export default function Home() {
     }
 
     async function logout() {
+        // apiBase lo seguimos guardando en AsyncStorage
         await AsyncStorage.removeItem("moltbot_api");
-        await AsyncStorage.removeItem("moltbot_token");
+        await signOut(); // token fuera
         setOut("");
         setCmd("PING");
         router.replace("/login");
     }
-    if (loading) {
+
+    if (loading || authLoading) {
         return (
             <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
                 <Text>Cargando...</Text>
@@ -152,25 +182,27 @@ export default function Home() {
                 returnKeyType="send"
             />
 
-            <Pressable
-                style={[styles.btn, !cmd.trim() && { opacity: 0.5 }]}
-                onPress={sendCmd}
-                disabled={!cmd.trim()}
-            >
+            <Pressable style={[styles.btn, !cmd.trim() && { opacity: 0.5 }]} onPress={sendCmd} disabled={!cmd.trim()}>
                 <Text style={styles.btnText}>Enviar CMD</Text>
             </Pressable>
 
             <Text style={styles.label}>Salida</Text>
-            <Pressable style={styles.btn} onPress={() => {
-                try {
-                    navigator.clipboard.writeText(out);
-                    Alert.alert("Listo", "Salida copiada.");
-                } catch {
-                    Alert.alert("No disponible", "Copiar funciona solo en web por ahora.");
-                }
-            }}>
+            <Pressable
+                style={styles.btn}
+                onPress={() => {
+                    try {
+                        // Web only
+                        // @ts-ignore
+                        navigator.clipboard.writeText(out);
+                        Alert.alert("Listo", "Salida copiada.");
+                    } catch {
+                        Alert.alert("No disponible", "Copiar funciona solo en web por ahora.");
+                    }
+                }}
+            >
                 <Text style={styles.btnText}>Copiar salida</Text>
             </Pressable>
+
             <ScrollView style={styles.outBox}>
                 <Text selectable style={styles.outText}>
                     {out || "(vacío)"}
